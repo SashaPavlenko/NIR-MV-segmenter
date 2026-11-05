@@ -1,0 +1,394 @@
+{
+ "fold1": {
+  "participant": 1,
+  "runs": [
+   "run_1_drill_3",
+   "run_1_scalpel_2",
+   "run_1_screwdriver_2"
+  ],
+  "views": {
+   "run_1_drill_3": {
+    "cam1_left": 388,
+    "cam1_right": 389,
+    "cam2_left": 390,
+    "cam2_right": 391,
+    "cam3_left": 392,
+    "cam3_right": 393,
+    "cam4_left": 394,
+    "cam4_right": 395
+   },
+   "run_1_scalpel_2": {
+    "cam1_left": 404,
+    "cam1_right": 405,
+    "cam2_left": 406,
+    "cam2_right": 407,
+    "cam3_left": 408,
+    "cam3_right": 409,
+    "cam4_left": 410,
+    "cam4_right": 411
+   },
+   "run_1_screwdriver_2": {
+    "cam1_left": 412,
+    "cam1_right": 413,
+    "cam2_left": 414,
+    "cam2_right": 415,
+    "cam3_left": 416,
+    "cam3_right": 417,
+    "cam4_left": 418,
+    "cam4_right": 419
+   }
+  },
+  "test_jobs": [
+   390,
+   391,
+   409,
+   410,
+   411,
+   412,
+   414,
+   416,
+   419
+  ],
+  "infer_jobs": [
+   388,
+   389,
+   390,
+   391,
+   392,
+   393,
+   394,
+   395,
+   404,
+   405,
+   406,
+   407,
+   408,
+   409,
+   410,
+   411,
+   412,
+   413,
+   414,
+   415,
+   416,
+   417,
+   418,
+   419
+  ]
+ },
+ "fold2": {
+  "participant": 2,
+  "runs": [
+   "run_2_drill_2",
+   "run_2_scalpel_1",
+   "run_2_screwdriver_3"
+  ],
+  "views": {
+   "run_2_drill_2": {
+    "cam1_left": 420,
+    "cam1_right": 421,
+    "cam2_left": 422,
+    "cam2_right": 423,
+    "cam3_left": 424,
+    "cam3_right": 425,
+    "cam4_left": 426,
+    "cam4_right": 427
+   },
+   "run_2_scalpel_1": {
+    "cam1_left": 436,
+    "cam1_right": 437,
+    "cam2_left": 438,
+    "cam2_right": 439,
+    "cam3_left": 440,
+    "cam3_right": 441,
+    "cam4_left": 442,
+    "cam4_right": 443
+   },
+   "run_2_screwdriver_3": {
+    "cam1_left": 444,
+    "cam1_right": 445,
+    "cam2_left": 446,
+    "cam2_right": 447,
+    "cam3_left": 448,
+    "cam3_right": 449,
+    "cam4_left": 450,
+    "cam4_right": 451
+   }
+  },
+  "test_jobs": [
+   425,
+   427,
+   440,
+   441,
+   442,
+   443,
+   444,
+   446,
+   447
+  ],
+  "infer_jobs": [
+   420,
+   421,
+   422,
+   423,
+   424,
+   425,
+   426,
+   427,
+   436,
+   437,
+   438,
+   439,
+   440,
+   441,
+   442,
+   443,
+   444,
+   445,
+   446,
+   447,
+   448,
+   449,
+   450,
+   451
+  ]
+ },
+ "fold3": {
+  "participant": 3,
+  "runs": [
+   "run_3_drill_4",
+   "run_3_scalpel_1",
+   "run_3_screwdriver_2"
+  ],
+  "views": {
+   "run_3_drill_4": {
+    "cam1_left": 452,
+    "cam1_right": 453,
+    "cam2_left": 454,
+    "cam2_right": 455,
+    "cam3_left": 456,
+    "cam3_right": 457,
+    "cam4_left": 458,
+    "cam4_right": 459
+   },
+   "run_3_scalpel_1": {
+    "cam1_left": 468,
+    "cam1_right": 469,
+    "cam2_left": 470,
+    "cam2_right": 471,
+    "cam3_left": 472,
+    "cam3_right": 473,
+    "cam4_left": 474,
+    "cam4_right": 475
+   },
+   "run_3_screwdriver_2": {
+    "cam1_left": 476,
+    "cam1_right": 477,
+    "cam2_left": 478,
+    "cam2_right": 479,
+    "cam3_left": 480,
+    "cam3_right": 481,
+    "cam4_left": 482,
+    "cam4_right": 483
+   }
+  },
+  "test_jobs": [
+   452,
+   453,
+   455,
+   456,
+   457,
+   459,
+   474,
+   475,
+   482,
+   483
+  ],
+  "infer_jobs": [
+   452,
+   453,
+   454,
+   455,
+   456,
+   457,
+   458,
+   459,
+   468,
+   469,
+   470,
+   471,
+   472,
+   473,
+   474,
+   475,
+   476,
+   477,
+   478,
+   479,
+   480,
+   481,
+   482,
+   483
+  ]
+ },
+ "fold4": {
+  "participant": 4,
+  "runs": [
+   "run_4_drill_4",
+   "run_4_scalpel_2",
+   "run_4_screwdriver_1"
+  ],
+  "views": {
+   "run_4_drill_4": {
+    "cam1_left": 484,
+    "cam1_right": 485,
+    "cam2_left": 486,
+    "cam2_right": 487,
+    "cam3_left": 488,
+    "cam3_right": 489,
+    "cam4_left": 490,
+    "cam4_right": 491
+   },
+   "run_4_scalpel_2": {
+    "cam1_left": 500,
+    "cam1_right": 501,
+    "cam2_left": 502,
+    "cam2_right": 503,
+    "cam3_left": 504,
+    "cam3_right": 505,
+    "cam4_left": 506,
+    "cam4_right": 507
+   },
+   "run_4_screwdriver_1": {
+    "cam1_left": 508,
+    "cam1_right": 509,
+    "cam2_left": 510,
+    "cam2_right": 511,
+    "cam3_left": 512,
+    "cam3_right": 513,
+    "cam4_left": 514,
+    "cam4_right": 515
+   }
+  },
+  "test_jobs": [
+   487,
+   490,
+   491,
+   501,
+   502,
+   503,
+   506,
+   507,
+   508,
+   509,
+   510,
+   512,
+   513,
+   514,
+   515
+  ],
+  "infer_jobs": [
+   484,
+   485,
+   486,
+   487,
+   488,
+   489,
+   490,
+   491,
+   500,
+   501,
+   502,
+   503,
+   504,
+   505,
+   506,
+   507,
+   508,
+   509,
+   510,
+   511,
+   512,
+   513,
+   514,
+   515
+  ]
+ },
+ "fold5": {
+  "participant": 5,
+  "runs": [
+   "run_5_drill_2",
+   "run_5_scalpel_1",
+   "run_5_screwdriver_1"
+  ],
+  "views": {
+   "run_5_drill_2": {
+    "cam1_left": 516,
+    "cam1_right": 517,
+    "cam2_left": 518,
+    "cam2_right": 519,
+    "cam3_left": 520,
+    "cam3_right": 521,
+    "cam4_left": 522,
+    "cam4_right": 523
+   },
+   "run_5_scalpel_1": {
+    "cam1_left": 532,
+    "cam1_right": 533,
+    "cam2_left": 534,
+    "cam2_right": 535,
+    "cam3_left": 536,
+    "cam3_right": 537,
+    "cam4_left": 538,
+    "cam4_right": 539
+   },
+   "run_5_screwdriver_1": {
+    "cam1_left": 540,
+    "cam1_right": 541,
+    "cam2_left": 542,
+    "cam2_right": 543,
+    "cam3_left": 544,
+    "cam3_right": 545,
+    "cam4_left": 546,
+    "cam4_right": 547
+   }
+  },
+  "test_jobs": [
+   517,
+   518,
+   519,
+   532,
+   539,
+   542,
+   543,
+   545,
+   546
+  ],
+  "infer_jobs": [
+   516,
+   517,
+   518,
+   519,
+   520,
+   521,
+   522,
+   523,
+   532,
+   533,
+   534,
+   535,
+   536,
+   537,
+   538,
+   539,
+   540,
+   541,
+   542,
+   543,
+   544,
+   545,
+   546,
+   547
+  ]
+ }
+}

@@ -1,0 +1,18 @@
+_BASE_: my_finetune.yaml
+# Base of the thesis models: 8 classes, one dataset "hoist_finetune_all" (its JSON is set by
+# FINETUNE_ALL_JSON, see src/register_finetune_dataset.py), input at the native 384x384 (no
+# resize at train or test; HOIST-Former's default samples the short edge from {360, 480}).
+# 384 is divisible by 32 (Swin) and by 4 (mask features), so nothing is padded or cropped.
+DATASETS:
+  TRAIN: ("hoist_finetune_all",)
+  TEST: ("hoist_finetune_all",)
+INPUT:
+  MIN_SIZE_TRAIN: (384,)
+  MIN_SIZE_TEST: 384
+SOLVER:
+  MAX_ITER: 5000
+  STEPS: (3000,)
+  CHECKPOINT_PERIOD: 250
+TEST:
+  EVAL_PERIOD: 0
+OUTPUT_DIR: './checkpoints/v4_base/'

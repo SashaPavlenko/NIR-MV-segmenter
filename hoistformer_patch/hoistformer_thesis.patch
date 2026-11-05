@@ -1,0 +1,466 @@
+diff --git a/demo.py b/demo.py
+index b0e1b22..5416d25 100644
+--- a/demo.py
++++ b/demo.py
+@@ -5,6 +5,8 @@ import numpy as np
+ import argparse
+ from demo_video.predictor import VisualizationDemo
+ 
++CHUNK_SIZE = 200  # frames per chunk — tune down if still OOMing
++
+ if __name__ == '__main__':
+ 
+     parser = argparse.ArgumentParser(description='Arguments for Demo')
+@@ -25,9 +27,15 @@ if __name__ == '__main__':
+         for frm in frames:
+             frm_np = cv2.imread(osp.join(root, vid, frm))
+             frames_bgr_np.append(frm_np)
+-        predictions, vis_output = demo_inference.run_on_video(frames_bgr_np)
++
+         os.makedirs(osp.join(output_path, vid), exist_ok=True)
+-        for frm_idx, vis_img in enumerate(vis_output):
+-            frm = vis_img.get_image()
+-            save_path = osp.join(output_path, vid, f'output_frm_{frm_idx}.jpg')
+-            cv2.imwrite(save_path, frm)
+\ No newline at end of file
++        global_frm_idx = 0
++        for chunk_start in range(0, len(frames_bgr_np), CHUNK_SIZE):
++            chunk = frames_bgr_np[chunk_start:chunk_start + CHUNK_SIZE]
++            print(f'  Chunk {chunk_start}–{chunk_start + len(chunk) - 1} of {len(frames_bgr_np)}')
++            predictions, vis_output = demo_inference.run_on_video(chunk)
++            for vis_img in vis_output:
++                frm = vis_img.get_image()
++                save_path = osp.join(output_path, vid, f'output_frm_{global_frm_idx:05d}.jpg')
++                cv2.imwrite(save_path, frm)
++                global_frm_idx += 1
+diff --git a/mask2former/modeling/pixel_decoder/ops/modules/ms_deform_attn.py b/mask2former/modeling/pixel_decoder/ops/modules/ms_deform_attn.py
+index e7b4c42..fe131f3 100644
+--- a/mask2former/modeling/pixel_decoder/ops/modules/ms_deform_attn.py
++++ b/mask2former/modeling/pixel_decoder/ops/modules/ms_deform_attn.py
+@@ -49,7 +49,7 @@ class MSDeformAttn(nn.Module):
+             warnings.warn("You'd better set d_model in MSDeformAttn to make the dimension of each attention head a power of 2 "
+                           "which is more efficient in our CUDA implementation.")
+ 
+-        self.im2col_step = 128
++        self.im2col_step = 1
+ 
+         self.d_model = d_model
+         self.n_levels = n_levels
+diff --git a/mask2former_video/__init__.py b/mask2former_video/__init__.py
+index b6b2f54..265143a 100644
+--- a/mask2former_video/__init__.py
++++ b/mask2former_video/__init__.py
+@@ -10,6 +10,7 @@ from .video_maskformer_model import VideoMaskFormer
+ # video
+ from .data_video import (
+     YTVISDatasetMapper,
++    MultiViewDatasetMapper,
+     YTVISEvaluator,
+     build_detection_train_loader,
+     build_detection_test_loader,
+diff --git a/mask2former_video/config.py b/mask2former_video/config.py
+index 0b2bfe1..a28af11 100644
+--- a/mask2former_video/config.py
++++ b/mask2former_video/config.py
+@@ -9,4 +9,34 @@ def add_maskformer2_video_config(cfg):
+     cfg.INPUT.SAMPLING_FRAME_NUM = 2
+     cfg.INPUT.SAMPLING_FRAME_RANGE = 20
+     cfg.INPUT.SAMPLING_FRAME_SHUFFLE = False
+-    cfg.INPUT.AUGMENTATIONS = [] # "brightness", "contrast", "saturation", "rotation"
++    cfg.INPUT.AUGMENTATIONS = [] # "brightness", "contrast", "saturation", "rotation", "brightness_up", "contrast_up"
++
++    # Per-clip metadata conditioning (thesis fine-tune ablations). Off by default,
++    # zero-initialized when on, so enabling it starts identical to the unconditioned
++    # model and only diverges once fine-tuning updates the embeddings.
++    # activity_id / camera_pos_id come from the YTVIS "videos" entries (see
++    # thesis/scripts/finetune/clip_metadata.py) and are threaded through by
++    # mask2former_video/data_video/datasets/hoist.py; -1 (absent/unknown) maps to
++    # the last embedding row.
++    cfg.MODEL.MASK_FORMER.USE_ACTIVITY_COND = False
++    cfg.MODEL.MASK_FORMER.NUM_ACTIVITY_CLASSES = 4  # idle, drill, scalpel, screwdriver
++    cfg.MODEL.MASK_FORMER.USE_CAMERA_COND = False
++    cfg.MODEL.MASK_FORMER.NUM_CAMERA_POSITIONS = 3  # table_up (cam1/2), front_angled (cam3), top_down (cam4)
++
++    # Per-class loss re-weighting (thesis ablation "toolw"): one float per real
++    # class in categories.CATEGORIES order; [] = off. Scales the class's CE
++    # weight and the mask/dice loss of its instances (see criterion.py).
++    cfg.MODEL.MASK_FORMER.CLASS_LOSS_WEIGHTS = []
++
++    # Horizontal flip swaps physical left/right, so a flipped "hand_left" is
++    # visually a right hand. Pairs of contiguous class ids to swap whenever a
++    # clip is h-flipped (thesis ablation "flip_swap"); [] = keep labels as-is
++    # (the original, label-noisy behaviour). E.g. [[0, 1], [2, 3]] for
++    # hand_left<->hand_right, haptic_left<->haptic_right.
++    cfg.INPUT.HFLIP_SWAP_CLASS_PAIRS = []
++
++    # Multi-view training (thesis variant B): how many cameras of the same instant
++    # go into one clip. 0 keeps the single-view behaviour. The clip's frames are
++    # (moment, view) pairs, so SAMPLING_FRAME_NUM is split as
++    # moments = SAMPLING_FRAME_NUM // MULTIVIEW_VIEW_NUM.
++    cfg.INPUT.MULTIVIEW_VIEW_NUM = 0
+diff --git a/mask2former_video/data_video/__init__.py b/mask2former_video/data_video/__init__.py
+index 3085ed7..921299d 100644
+--- a/mask2former_video/data_video/__init__.py
++++ b/mask2former_video/data_video/__init__.py
+@@ -2,6 +2,7 @@
+ # Modified by Bowen Cheng from https://github.com/sukjunhwang/IFC
+ 
+ from .dataset_mapper import YTVISDatasetMapper, CocoClipDatasetMapper
++from .multiview_dataset_mapper import MultiViewDatasetMapper
+ from .build import *
+ 
+ from .datasets import *
+diff --git a/mask2former_video/data_video/augmentation.py b/mask2former_video/data_video/augmentation.py
+index 5739721..7d05d8b 100644
+--- a/mask2former_video/data_video/augmentation.py
++++ b/mask2former_video/data_video/augmentation.py
+@@ -151,6 +151,19 @@ def build_augmentation(cfg, is_train):
+             aug_list.append(T.RandomContrast(0.9, 1.1))
+         if "saturation" in augmentations:
+             aug_list.append(T.RandomSaturation(0.9, 1.1))
++        if "brightness_up" in augmentations:
++            # One-sided (never darkens) brightness boost, as opposed to the
++            # symmetric "brightness" jitter above. For thesis ablation:
++            # IR frames are duplicated 1-channel -> 3-channel before this
++            # point (see dataset_mapper.py: utils.read_image(..., format="RGB")
++            # on a grayscale source), so plain "saturation" (blend toward
++            # image.dot([.299,.587,.114])) is a mathematical no-op on an
++            # R==G==B image regardless of intensity range -- the "increase
++            # saturation" ablation is implemented as contrast instead (below),
++            # which is the meaningful analogue for a single-channel signal.
++            aug_list.append(T.RandomBrightness(1.0, 1.4))
++        if "contrast_up" in augmentations:
++            aug_list.append(T.RandomContrast(1.0, 1.4))
+         if "rotation" in augmentations:
+             aug_list.append(
+                 T.RandomRotation(
+diff --git a/mask2former_video/data_video/dataset_mapper.py b/mask2former_video/data_video/dataset_mapper.py
+index f828e26..988a0f0 100644
+--- a/mask2former_video/data_video/dataset_mapper.py
++++ b/mask2former_video/data_video/dataset_mapper.py
+@@ -162,6 +162,7 @@ class YTVISDatasetMapper:
+         sampling_frame_range: int = 5,
+         sampling_frame_shuffle: bool = False,
+         num_classes: int = 40,
++        hflip_swap_pairs=(),
+     ):
+         """
+         NOTE: this interface is experimental.
+@@ -170,6 +171,8 @@ class YTVISDatasetMapper:
+             augmentations: a list of augmentations or deterministic transforms to apply
+             image_format: an image format supported by :func:`detection_utils.read_image`.
+             use_instance_mask: whether to process instance segmentation annotations, if available
++            hflip_swap_pairs: pairs of contiguous category ids swapped when a clip is
++                horizontally flipped (left/right classes), see cfg.INPUT.HFLIP_SWAP_CLASS_PAIRS
+         """
+         # fmt: off
+         self.is_train               = is_train
+@@ -180,6 +183,10 @@ class YTVISDatasetMapper:
+         self.sampling_frame_range   = sampling_frame_range
+         self.sampling_frame_shuffle = sampling_frame_shuffle
+         self.num_classes            = num_classes
++        self.hflip_swap = {}
++        for a, b in hflip_swap_pairs:
++            self.hflip_swap[int(a)] = int(b)
++            self.hflip_swap[int(b)] = int(a)
+         # fmt: on
+         logger = logging.getLogger(__name__)
+         mode = "training" if is_train else "inference"
+@@ -202,10 +209,34 @@ class YTVISDatasetMapper:
+             "sampling_frame_range": sampling_frame_range,
+             "sampling_frame_shuffle": sampling_frame_shuffle,
+             "num_classes": cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES,
++            "hflip_swap_pairs": cfg.INPUT.HFLIP_SWAP_CLASS_PAIRS,
+         }
+ 
+         return ret
+ 
++    def select_indices(self, dataset_dict, video_length):
++        """Which positions of the clip go into this training sample.
++
++        Factored out so a subclass can pick positions with structure (see
++        MultiViewDatasetMapper, which samples whole moments across cameras).
++        """
++        if not self.is_train:
++            return range(video_length)
++        ref_frame = random.randrange(video_length)
++
++        start_idx = max(0, ref_frame-self.sampling_frame_range)
++        end_idx = min(video_length, ref_frame+self.sampling_frame_range + 1)
++
++        selected_idx = np.random.choice(
++            np.array(list(range(start_idx, ref_frame)) + list(range(ref_frame+1, end_idx))),
++            self.sampling_frame_num - 1,
++        )
++        selected_idx = selected_idx.tolist() + [ref_frame]
++        selected_idx = sorted(selected_idx)
++        if self.sampling_frame_shuffle:
++            random.shuffle(selected_idx)
++        return selected_idx
++
+     def __call__(self, dataset_dict):
+         """
+         Args:
+@@ -218,22 +249,7 @@ class YTVISDatasetMapper:
+         dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
+ 
+         video_length = dataset_dict["length"]
+-        if self.is_train:
+-            ref_frame = random.randrange(video_length)
+-
+-            start_idx = max(0, ref_frame-self.sampling_frame_range)
+-            end_idx = min(video_length, ref_frame+self.sampling_frame_range + 1)
+-
+-            selected_idx = np.random.choice(
+-                np.array(list(range(start_idx, ref_frame)) + list(range(ref_frame+1, end_idx))),
+-                self.sampling_frame_num - 1,
+-            )
+-            selected_idx = selected_idx.tolist() + [ref_frame]
+-            selected_idx = sorted(selected_idx)
+-            if self.sampling_frame_shuffle:
+-                random.shuffle(selected_idx)
+-        else:
+-            selected_idx = range(video_length)
++        selected_idx = self.select_indices(dataset_dict, video_length)
+ 
+         video_annos = dataset_dict.pop("annotations", None)
+         file_names = dataset_dict.pop("file_names", None)
+@@ -283,6 +299,11 @@ class YTVISDatasetMapper:
+                 for obj in _frame_annos
+                 if obj.get("iscrowd", 0) == 0
+             ]
++            # A horizontal flip turns a physical left hand/haptic into a right
++            # one; keep the label physically true (cfg.INPUT.HFLIP_SWAP_CLASS_PAIRS).
++            if self.hflip_swap and sum(isinstance(t, T.HFlipTransform) for t in transforms.transforms) % 2 == 1:
++                for _anno in annos:
++                    _anno["category_id"] = self.hflip_swap.get(int(_anno["category_id"]), _anno["category_id"])
+             sorted_annos = [_get_dummy_anno(self.num_classes) for _ in range(len(ids))]
+ 
+             for _anno in annos:
+diff --git a/mask2former_video/data_video/datasets/hoist.py b/mask2former_video/data_video/datasets/hoist.py
+index 87a7504..9364007 100644
+--- a/mask2former_video/data_video/datasets/hoist.py
++++ b/mask2former_video/data_video/datasets/hoist.py
+@@ -115,6 +115,15 @@ def load_hoist_json(json_file, image_root, dataset_name=None, extra_annotation_k
+         record["width"] = vid_dict["width"]
+         record["length"] = vid_dict["length"]
+         video_id = record["video_id"] = vid_dict["id"]
++        # Per-clip metadata conditioning (thesis fine-tune ablations, see
++        # scripts/finetune/clip_metadata.py and MODEL.MASK_FORMER.USE_*_COND).
++        # -1 = absent (e.g. JSON built before this field existed).
++        record["activity_id"] = vid_dict.get("activity_id", -1)
++        record["camera_pos_id"] = vid_dict.get("camera_pos_id", -1)
++        # multi-view clips: how the (moment, view) time axis is laid out
++        record["n_views"] = vid_dict.get("n_views", 1)
++        record["view_names"] = vid_dict.get("view_names", [])
++        record["run"] = vid_dict.get("run", "")
+ 
+         video_objs = []
+         for frame_idx in range(record["length"]):
+diff --git a/mask2former_video/modeling/criterion.py b/mask2former_video/modeling/criterion.py
+index ab9799b..ee9ca78 100644
+--- a/mask2former_video/modeling/criterion.py
++++ b/mask2former_video/modeling/criterion.py
+@@ -45,6 +45,21 @@ dice_loss_jit = torch.jit.script(
+ )  # type: torch.jit.ScriptModule
+ 
+ 
++def weighted_dice_loss(inputs: torch.Tensor, targets: torch.Tensor, weights: torch.Tensor, num_masks: float):
++    """dice_loss with a per-row weight (row = one instance on one frame)."""
++    inputs = inputs.sigmoid().flatten(1)
++    numerator = 2 * (inputs * targets).sum(-1)
++    denominator = inputs.sum(-1) + targets.sum(-1)
++    loss = 1 - (numerator + 1) / (denominator + 1)
++    return (loss * weights).sum() / num_masks
++
++
++def weighted_sigmoid_ce_loss(inputs: torch.Tensor, targets: torch.Tensor, weights: torch.Tensor, num_masks: float):
++    """sigmoid_ce_loss with a per-row weight (row = one instance on one frame)."""
++    loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
++    return (loss.mean(1) * weights).sum() / num_masks
++
++
+ def sigmoid_ce_loss(
+         inputs: torch.Tensor,
+         targets: torch.Tensor,
+@@ -94,7 +109,8 @@ class VideoSetCriterion(nn.Module):
+     """
+ 
+     def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses,
+-                 num_points, oversample_ratio, importance_sample_ratio):
++                 num_points, oversample_ratio, importance_sample_ratio,
++                 class_weights=None):
+         """Create the criterion.
+         Parameters:
+             num_classes: number of object categories, omitting the special no-object category
+@@ -111,7 +127,28 @@ class VideoSetCriterion(nn.Module):
+         self.losses = losses
+         empty_weight = torch.ones(self.num_classes + 1)
+         empty_weight[-1] = self.eos_coef
++        # Optional per-class re-weighting (thesis ablation "toolw"): scales the
++        # CE weight of each real class AND the per-instance mask/dice loss of
++        # instances of that class. Motivation: tools (scalpel/screwdriver/drill)
++        # are 30-50x smaller than haptics in pixels and under-represented in
++        # videos, so their share of the loss signal is tiny (see
++        # FLICKER_ANALYSIS_2026-09-08.md, H1/H8). None/empty = off (all ones).
++        if class_weights:
++            assert len(class_weights) == self.num_classes, \
++                f"class_weights has {len(class_weights)} entries, expected {self.num_classes}"
++            cw = torch.tensor(list(class_weights), dtype=torch.float32)
++            empty_weight[:-1] = empty_weight[:-1] * cw
++        else:
++            cw = torch.ones(self.num_classes)
+         self.register_buffer("empty_weight", empty_weight)
++        # num_classes + 1 entries: matched instances can carry the "no-object"
++        # label (== num_classes) -- prepare_targets takes an instance's class
++        # from the LAST sampled frame, and an instance absent from that frame is
++        # a dummy with category_id == num_classes. Weight 1.0 for that slot.
++        # (Round v3 tasks toolw/combo died on a CUDA index assert here before
++        # this padding existed.)
++        self.register_buffer("class_weights", torch.cat([cw, torch.ones(1)]))
++        self.use_class_weights = bool(class_weights)
+ 
+         # pointwise mask loss parameters
+         self.num_points = num_points
+@@ -174,10 +211,21 @@ class VideoSetCriterion(nn.Module):
+             point_coords,
+             align_corners=False,
+         ).squeeze(1)
+-        losses = {
+-            "loss_mask": sigmoid_ce_loss_jit(point_logits, point_labels, num_masks),
+-            "loss_dice": dice_loss_jit(point_logits, point_labels, num_masks),
+-        }
++        if self.use_class_weights:
++            # one weight per matched instance, repeated over its T frames (rows
++            # of point_logits are (instance, frame) pairs, instance-major)
++            inst_classes = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
++            n_frames = point_logits.shape[0] // max(1, inst_classes.numel())
++            w = self.class_weights[inst_classes].repeat_interleave(n_frames)
++            losses = {
++                "loss_mask": weighted_sigmoid_ce_loss(point_logits, point_labels, w, num_masks),
++                "loss_dice": weighted_dice_loss(point_logits, point_labels, w, num_masks),
++            }
++        else:
++            losses = {
++                "loss_mask": sigmoid_ce_loss_jit(point_logits, point_labels, num_masks),
++                "loss_dice": dice_loss_jit(point_logits, point_labels, num_masks),
++            }
+ 
+         del src_masks
+         del target_masks
+diff --git a/mask2former_video/video_maskformer_model.py b/mask2former_video/video_maskformer_model.py
+index 1f97cf9..78b6b62 100644
+--- a/mask2former_video/video_maskformer_model.py
++++ b/mask2former_video/video_maskformer_model.py
+@@ -44,6 +44,13 @@ class VideoMaskFormer(nn.Module):
+         pixel_std: Tuple[float],
+         # video
+         num_frames,
++        # per-clip metadata conditioning (see add_maskformer2_video_config)
++        cond_feature_key: str = "res5",
++        cond_feature_channels: int = 0,
++        use_activity_cond: bool = False,
++        num_activity_classes: int = 4,
++        use_camera_cond: bool = False,
++        num_camera_positions: int = 3,
+     ):
+         """
+         Args:
+@@ -87,6 +94,20 @@ class VideoMaskFormer(nn.Module):
+ 
+         self.num_frames = num_frames
+ 
++        # Per-clip metadata conditioning: one extra embedding row for
++        # "unknown/absent" (activity_id / camera_pos_id == -1), appended past
++        # the real categories. Zero-initialized so a freshly-enabled model
++        # starts out numerically identical to the unconditioned baseline.
++        self.cond_feature_key = cond_feature_key
++        self.use_activity_cond = use_activity_cond
++        self.use_camera_cond = use_camera_cond
++        if use_activity_cond:
++            self.activity_embed = nn.Embedding(num_activity_classes + 1, cond_feature_channels)
++            nn.init.zeros_(self.activity_embed.weight)
++        if use_camera_cond:
++            self.camera_embed = nn.Embedding(num_camera_positions + 1, cond_feature_channels)
++            nn.init.zeros_(self.camera_embed.weight)
++
+     @classmethod
+     def from_config(cls, cfg):
+         backbone = build_backbone(cfg)
+@@ -129,6 +150,7 @@ class VideoMaskFormer(nn.Module):
+             num_points=cfg.MODEL.MASK_FORMER.TRAIN_NUM_POINTS,
+             oversample_ratio=cfg.MODEL.MASK_FORMER.OVERSAMPLE_RATIO,
+             importance_sample_ratio=cfg.MODEL.MASK_FORMER.IMPORTANCE_SAMPLE_RATIO,
++            class_weights=list(cfg.MODEL.MASK_FORMER.CLASS_LOSS_WEIGHTS) or None,
+         )
+ 
+         return {
+@@ -145,6 +167,13 @@ class VideoMaskFormer(nn.Module):
+             "pixel_std": cfg.MODEL.PIXEL_STD,
+             # video
+             "num_frames": cfg.INPUT.SAMPLING_FRAME_NUM,
++            # per-clip metadata conditioning
++            "cond_feature_key": "res5",
++            "cond_feature_channels": backbone.output_shape()["res5"].channels,
++            "use_activity_cond": cfg.MODEL.MASK_FORMER.USE_ACTIVITY_COND,
++            "num_activity_classes": cfg.MODEL.MASK_FORMER.NUM_ACTIVITY_CLASSES,
++            "use_camera_cond": cfg.MODEL.MASK_FORMER.USE_CAMERA_COND,
++            "num_camera_positions": cfg.MODEL.MASK_FORMER.NUM_CAMERA_POSITIONS,
+         }
+ 
+     @property
+@@ -178,13 +207,19 @@ class VideoMaskFormer(nn.Module):
+                         Each dict contains keys "id", "category_id", "isthing".
+         """
+         images = []
++        frame_counts = []
+         for video in batched_inputs:
++            frame_counts.append(len(video["image"]))
+             for frame in video["image"]:
+                 images.append(frame.to(self.device))
+         images = [(x - self.pixel_mean) / self.pixel_std for x in images]
+         images = ImageList.from_tensors(images, self.size_divisibility)
+-        
++
+         features = self.backbone(images.tensor)
++
++        if self.use_activity_cond or self.use_camera_cond:
++            self._add_clip_conditioning(features, batched_inputs, frame_counts)
++
+         outputs = self.sem_seg_head(features)
+         if self.training:
+             # mask classification target
+@@ -221,6 +256,33 @@ class VideoMaskFormer(nn.Module):
+ 
+             return retry_if_cuda_oom(self.inference_video)(mask_cls_result, mask_pred_result, image_size, height, width)
+ 
++    def _add_clip_conditioning(self, features, batched_inputs, frame_counts):
++        """Add a per-video, per-channel bias to features[self.cond_feature_key]
++        (shape (sum(frame_counts), C, h, w), one batch row per frame across all
++        videos in this call) so every frame of a given clip gets the same
++        activity/camera-position bias. -1 (metadata absent, e.g. older cached
++        JSON) maps to the last ("unknown") embedding row.
++        """
++        feat = features[self.cond_feature_key]
++        offset = 0
++        for video, count in zip(batched_inputs, frame_counts):
++            bias = None
++
++            def _lookup(embed, key, num_classes):
++                idx = video.get(key, -1)
++                idx = idx if 0 <= idx < num_classes else num_classes  # unknown bucket
++                return embed(torch.as_tensor(idx, device=feat.device))
++
++            if self.use_activity_cond:
++                b = _lookup(self.activity_embed, "activity_id", self.activity_embed.num_embeddings - 1)
++                bias = b if bias is None else bias + b
++            if self.use_camera_cond:
++                b = _lookup(self.camera_embed, "camera_pos_id", self.camera_embed.num_embeddings - 1)
++                bias = b if bias is None else bias + b
++
++            feat[offset:offset + count] = feat[offset:offset + count] + bias.view(1, -1, 1, 1)
++            offset += count
++
+     def prepare_targets(self, targets, images):
+         h_pad, w_pad = images.tensor.shape[-2:]
+         gt_instances = []

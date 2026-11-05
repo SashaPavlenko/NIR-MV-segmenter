@@ -1,0 +1,3 @@
+cvat-sdk==2.66.0
+tqdm
+numpy

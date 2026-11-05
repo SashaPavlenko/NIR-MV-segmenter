@@ -1,0 +1,8 @@
+# Copy into the CVAT checkout (next to CVAT's docker-compose.yml).
+# Publishes CVAT on port CVAT_PORT (default 8181) instead of 8080.
+# `!override` replaces the port list of the base file instead of adding to it,
+# otherwise 8080 would stay published as well.
+services:
+  traefik:
+    ports: !override
+      - "${CVAT_PORT:-8181}:8080"

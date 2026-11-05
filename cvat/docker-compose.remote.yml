@@ -1,0 +1,22 @@
+# Optional: access to CVAT from outside through a public host name (e.g. an ngrok domain), so
+# that annotators can work from home. Copy into the CVAT checkout together with
+# production_patched.py (made by make_production_patch.sh) and set CVAT_PUBLIC_HOST in
+# CVAT's .env file, e.g.  CVAT_PUBLIC_HOST=my-name.ngrok-free.dev
+#
+# Django refuses form posts (login) from an unknown origin, so the public URL must be in
+# CSRF_TRUSTED_ORIGINS. CVAT's production settings do not read that variable, hence the
+# patched settings file.
+services:
+  cvat_server:
+    environment:
+      CSRF_TRUSTED_ORIGINS: "https://${CVAT_PUBLIC_HOST}"
+    volumes:
+      - ./production_patched.py:/home/django/cvat/settings/production.py:ro
+    labels:
+      traefik.http.routers.cvat.rule: >-
+        (Host(`localhost`) || Host(`${CVAT_PUBLIC_HOST}`)) &&
+        (PathPrefix(`/api/`) || PathPrefix(`/static/`) || PathPrefix(`/admin`) || PathPrefix(`/django-rq`))
+  cvat_ui:
+    labels:
+      traefik.http.routers.cvat-ui.rule: >-
+        Host(`localhost`) || Host(`${CVAT_PUBLIC_HOST}`)

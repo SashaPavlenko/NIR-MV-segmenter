@@ -1,0 +1,11 @@
+_BASE_: v4_base.yaml
+# Final models of the thesis (combo_nir, combo_depth): 768 px input, 3x loss weight on
+# scalpel / screwdriver / drill (order = src/categories.py), brightness and contrast augmentation.
+INPUT:
+  MIN_SIZE_TRAIN: (768,)
+  MIN_SIZE_TEST: 768
+  AUGMENTATIONS: ["brightness_up", "contrast_up"]
+MODEL:
+  MASK_FORMER:
+    CLASS_LOSS_WEIGHTS: [1.0, 1.0, 1.0, 1.0, 3.0, 3.0, 3.0, 1.0]
+OUTPUT_DIR: './checkpoints/v4_combo/'
